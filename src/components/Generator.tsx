@@ -1,34 +1,44 @@
 import { createEffect, createSignal, For, onMount, Show } from "solid-js"
+import { createResizeObserver } from "@solid-primitives/resize-observer"
 import MessageItem from "./MessageItem"
-import type { ChatMessage } from "../types"
+import type { ChatMessage } from "~/types"
 import Setting from "./Setting"
+import PromptList from "./PromptList"
+import prompts from "~/prompts"
+import { Fzf } from "fzf"
+import { defaultMessage, defaultSetting } from "~/default"
+import throttle from "just-throttle"
 
-const defaultSetting = {
-  continuousDialogue: false,
-  archiveSession: false,
-  openaiAPIKey: "xxxxxxxxxxxxxxxxxxxxxxxxxxx",
-  openaiAPITemperature: 60,
-  systemRule: "回答要尽可能的客观，不知道就说不知道，不要乱答。"
+export interface PromptItem {
+  desc: string
+  prompt: string
 }
 
 export type Setting = typeof defaultSetting
-export default () => {
+
+export default function () {
   let inputRef: HTMLTextAreaElement
+  let containerRef: HTMLDivElement
   const [messageList, setMessageList] = createSignal<ChatMessage[]>([
     // {
-    //   role: "system",
-    //   content: `
-    // \`\`\`js
-    // console.log("Hello World")
-    // `
+    //   role: "assistant",
+    //   content: defaultMessage + defaultMessage + defaultMessage + defaultMessage
     // }
   ])
+  const [inputContent, setInputContent] = createSignal("")
   const [currentAssistantMessage, setCurrentAssistantMessage] = createSignal("")
   const [loading, setLoading] = createSignal(false)
   const [controller, setController] = createSignal<AbortController>()
   const [setting, setSetting] = createSignal(defaultSetting)
+  const [compatiblePrompt, setCompatiblePrompt] = createSignal<PromptItem[]>([])
+  const [containerWidth, setContainerWidth] = createSignal("init")
+  const fzf = new Fzf(prompts, { selector: k => `${k.desc} (${k.prompt})` })
+  const [height, setHeight] = createSignal("48px")
 
   onMount(() => {
+    createResizeObserver(containerRef, ({ width, height }, el) => {
+      if (el === containerRef) setContainerWidth(`${width}px`)
+    })
     const storage = localStorage.getItem("setting")
     const session = localStorage.getItem("session")
     try {
@@ -38,8 +48,8 @@ export default () => {
         archiveSession = parsed.archiveSession
         setSetting({
           ...defaultSetting,
-          ...parsed,
-          continuousDialogue: false
+          ...parsed
+          // continuousDialogue: false
         })
       }
       if (session && archiveSession) {
@@ -51,12 +61,41 @@ export default () => {
   })
 
   createEffect(() => {
+    if (messageList().length === 0) {
+      setMessageList([
+        {
+          role: "assistant",
+          content: defaultMessage
+        }
+      ])
+    } else if (
+      messageList().length > 1 &&
+      messageList()[0].content === defaultMessage
+    ) {
+      setMessageList(messageList().slice(1))
+    }
     localStorage.setItem("setting", JSON.stringify(setting()))
-  })
-  createEffect(() => {
     if (setting().archiveSession)
       localStorage.setItem("session", JSON.stringify(messageList()))
   })
+
+  createEffect(() => {
+    messageList().length
+    currentAssistantMessage()
+    scrollToBottom()
+  })
+
+  const scrollToBottom = throttle(
+    () => {
+      window.scrollTo({
+        top: document.body.scrollHeight,
+        behavior: "smooth"
+      })
+    },
+    250,
+    { leading: true, trailing: false }
+  )
+
   function archiveCurrentMessage() {
     if (currentAssistantMessage()) {
       setMessageList([
@@ -72,15 +111,17 @@ export default () => {
       inputRef.focus()
     }
   }
+
   async function handleButtonClick(value?: string) {
-    const inputValue = value ?? inputRef.value
+    const inputValue = value ?? inputContent()
     if (!inputValue) {
       return
     }
     // @ts-ignore
     if (window?.umami) umami.trackEvent("chat_generate")
-    inputRef.value = ""
-    setHeight("3em")
+    setInputContent("")
+    setCompatiblePrompt([])
+    setHeight("48px")
     if (
       !value ||
       value !==
@@ -99,31 +140,32 @@ export default () => {
     try {
       await fetchGPT(inputValue)
     } catch (error) {
-      setCurrentAssistantMessage(String(error))
+      setLoading(false)
+      setController()
+      setCurrentAssistantMessage(
+        String(error).includes("The user aborted a request")
+          ? ""
+          : String(error)
+      )
     }
     archiveCurrentMessage()
   }
+
   async function fetchGPT(inputValue: string) {
     setLoading(true)
     const controller = new AbortController()
     setController(controller)
+    const systemRule = setting().systemRule.trim()
+    const message = {
+      role: "user",
+      content: systemRule ? systemRule + "\n" + inputValue : inputValue
+    }
     const response = await fetch("/api/stream", {
       method: "POST",
       body: JSON.stringify({
         messages: setting().continuousDialogue
-          ? [
-              ...messageList().slice(0, -1),
-              {
-                role: "user",
-                content: setting().systemRule.trim() + "\n" + inputValue
-              }
-            ]
-          : [
-              {
-                role: "user",
-                content: setting().systemRule.trim() + "\n" + inputValue
-              }
-            ],
+          ? [...messageList().slice(0, -1), message]
+          : [message],
         key: setting().openaiAPIKey,
         temperature: setting().openaiAPITemperature / 100
       }),
@@ -156,9 +198,10 @@ export default () => {
   }
 
   function clear() {
-    inputRef.value = ""
+    setInputContent("")
     setMessageList([])
     setCurrentAssistantMessage("")
+    setCompatiblePrompt([])
   }
 
   function stopStreamFetch() {
@@ -168,10 +211,23 @@ export default () => {
     }
   }
 
-  const [height, setHeight] = createSignal("3em")
+  function reAnswer() {
+    handleButtonClick(
+      messageList()
+        .filter(k => k.role === "user")
+        .at(-1)?.content
+    )
+  }
+
+  function selectPrompt(prompt: string) {
+    setInputContent(prompt)
+    // setHeight("48px")
+    setHeight(inputRef.scrollHeight + "px")
+    setCompatiblePrompt([])
+  }
 
   return (
-    <div mt-6>
+    <div mt-6 ref={containerRef!}>
       <For each={messageList()}>
         {message => (
           <MessageItem role={message.role} message={message.content} />
@@ -180,11 +236,31 @@ export default () => {
       {currentAssistantMessage() && (
         <MessageItem role="assistant" message={currentAssistantMessage} />
       )}
-      <div mb-6>
+      <div
+        class="pb-2em fixed bottom-0 z-100 op-0"
+        style={
+          containerWidth() === "init"
+            ? {}
+            : {
+                transition: "opacity 0.3s ease-in-out",
+                width: containerWidth(),
+                opacity: 100,
+                "background-color": "var(--bg)"
+              }
+        }
+      >
+        <Show when={!compatiblePrompt().length && height() === "48px"}>
+          <Setting
+            setting={setting}
+            setSetting={setSetting}
+            clear={clear}
+            reAnswer={reAnswer}
+          />
+        </Show>
         <Show
           when={!loading()}
           fallback={() => (
-            <div class="h-12 my-4 flex items-center justify-center bg-slate bg-op-15 text-slate rounded-sm">
+            <div class="h-12 flex items-center justify-center bg-slate bg-op-15 text-slate rounded">
               <span>AI 正在思考...</span>
               <div
                 class="ml-1em px-2 py-0.5 border border-slate text-slate rounded-md text-sm op-70 cursor-pointer hover:bg-slate/10"
@@ -195,75 +271,93 @@ export default () => {
             </div>
           )}
         >
-          <div class="my-4 flex items-end">
+          <Show when={compatiblePrompt().length}>
+            <PromptList
+              prompts={compatiblePrompt()}
+              select={selectPrompt}
+            ></PromptList>
+          </Show>
+          <div class="flex items-end">
             <textarea
               ref={inputRef!}
               id="input"
               placeholder="与 ta 对话吧"
               autocomplete="off"
+              value={inputContent()}
               autofocus
-              disabled={loading()}
+              onClick={scrollToBottom}
+              // onBlur={() => {
+              //   setCompatiblePrompt([])
+              // }}
               onKeyDown={e => {
-                if (e.key === "Enter") {
+                if (compatiblePrompt().length) {
+                  if (
+                    e.key === "ArrowUp" ||
+                    e.key === "ArrowDown" ||
+                    e.key === "Enter"
+                  ) {
+                    e.preventDefault()
+                  }
+                } else if (e.key === "Enter") {
                   if (!e.shiftKey && !e.isComposing) {
                     handleButtonClick()
                   }
                 }
               }}
               onInput={e => {
-                setHeight("3em")
-                setHeight((e.target as HTMLTextAreaElement).scrollHeight + "px")
+                setHeight("48px")
+                const { scrollHeight } = e.currentTarget
+                setHeight(
+                  `${
+                    scrollHeight > window.innerHeight - 64
+                      ? window.innerHeight - 64
+                      : scrollHeight
+                  }px`
+                )
+                let { value } = e.currentTarget
+                setInputContent(value)
+                if (value === "") return setCompatiblePrompt([])
+                if (value === "/" || value === " ")
+                  return setCompatiblePrompt(prompts)
+                const promptKey = value.replace(/^[\/ ](.*)/, "$1")
+                if (promptKey !== value)
+                  setCompatiblePrompt(fzf.find(promptKey).map(k => k.item))
               }}
               style={{
-                height: height()
+                height: height(),
+                "border-top-right-radius": height() === "48px" ? 0 : "0.25rem",
+                "border-top-left-radius":
+                  compatiblePrompt().length === 0 ? "0.25rem" : 0
               }}
               class="self-end py-3 resize-none w-full px-3 text-slate bg-slate bg-op-15 focus:bg-op-20 focus:ring-0 focus:outline-none placeholder:text-slate-400 placeholder:op-30"
               rounded-l
             />
-            <button
-              onClick={() => handleButtonClick()}
-              disabled={loading()}
-              h-12
-              px-2
-              bg-slate
-              bg-op-15
-              text-slate
+            <Show when={inputContent()}>
+              <button
+                class="i-carbon:add-filled absolute right-3.5em bottom-3em rotate-45 hover:text-op-100 text-slate text-op-15"
+                onClick={() => {
+                  setInputContent("")
+                  setHeight("48px")
+                  setCompatiblePrompt([])
+                }}
+              />
+            </Show>
+            <div
+              class="flex text-slate bg-slate bg-op-15 h-3em items-center rounded-r"
+              style={{
+                "border-top-right-radius":
+                  compatiblePrompt().length === 0 ? "0.25rem" : 0
+              }}
             >
-              <span class="i-carbon:send-filled">123</span>
-            </button>
-            <button
-              onClick={() =>
-                handleButtonClick(
-                  messageList()
-                    .filter(k => k.role === "user")
-                    .at(-1)?.content
-                )
-              }
-              disabled={loading()}
-              h-12
-              bg-slate
-              bg-op-15
-              text-slate
-            >
-              <span class="i-carbon:reset">12312</span>
-            </button>
-            <button
-              title="Clear"
-              onClick={clear}
-              disabled={loading()}
-              h-12
-              w-10
-              bg-slate
-              bg-op-15
-              rounded-r
-              text-slate
-            >
-              <span class="i-carbon:trash-can">12312</span>
-            </button>
+              <button
+                title="发送"
+                onClick={() => handleButtonClick()}
+                class="i-carbon:send-filled text-5 mx-3 hover:text-slate-2"
+              />
+            </div>
           </div>
         </Show>
       </div>
-      <Setting setting={setting} setSetting={setSetting} />
     </div>
   )
 }
