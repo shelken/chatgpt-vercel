@@ -25,5 +25,6 @@ jobs:
           git fetch upstream
       - name: Merge Upstream into Fork
         run: |
+          git fetch
           git merge upstream/${{ env.UPSTREAM_BRANCH }}
           git push
