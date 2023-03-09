@@ -5,6 +5,10 @@ on:
     - cron: '0 */24 * * *'
   workflow_dispatch:
 
+env:
+  UPSTREAM_REPO: ourongxing/chatgpt-vercel
+  UPSTREAM_BRANCH: main
+
 jobs:
   merge:
     name: Merge Upstream into Fork
