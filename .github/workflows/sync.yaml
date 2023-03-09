@@ -25,6 +25,8 @@ jobs:
           git fetch upstream
       - name: Merge Upstream into Fork
         run: |
+          git config --global user.name 'action-auto'
+          git config --global user.email 'shelken.pxk@gmail.com'
           git fetch
           git merge --allow-unrelated-histories upstream/${{ env.UPSTREAM_BRANCH }}
           git push
