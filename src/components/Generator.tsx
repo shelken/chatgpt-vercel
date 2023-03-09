@@ -2,12 +2,13 @@ import { createEffect, createSignal, For, onMount, Show } from "solid-js"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import MessageItem from "./MessageItem"
 import type { ChatMessage } from "~/types"
-import Setting from "./Setting"
+import SettingAction from "./SettingAction"
 import PromptList from "./PromptList"
-import prompts from "~/prompts"
 import { Fzf } from "fzf"
 import { defaultMessage, defaultSetting } from "~/default"
 import throttle from "just-throttle"
+import { isMobile } from "~/utils"
+// import { mdMessage } from "~/temp"
 
 export interface PromptItem {
   desc: string
@@ -16,13 +17,13 @@ export interface PromptItem {
 
 export type Setting = typeof defaultSetting
 
-export default function () {
+export default function (props: { prompts: PromptItem[] }) {
   let inputRef: HTMLTextAreaElement
   let containerRef: HTMLDivElement
   const [messageList, setMessageList] = createSignal<ChatMessage[]>([
     // {
     //   role: "assistant",
-    //   content: defaultMessage + defaultMessage + defaultMessage + defaultMessage
+    //   content: mdMessage
     // }
   ])
   const [inputContent, setInputContent] = createSignal("")
@@ -32,7 +33,9 @@ export default function () {
   const [setting, setSetting] = createSignal(defaultSetting)
   const [compatiblePrompt, setCompatiblePrompt] = createSignal<PromptItem[]>([])
   const [containerWidth, setContainerWidth] = createSignal("init")
-  const fzf = new Fzf(prompts, { selector: k => `${k.desc} (${k.prompt})` })
+  const fzf = new Fzf(props.prompts, {
+    selector: k => `${k.desc} (${k.prompt})`
+  })
   const [height, setHeight] = createSignal("48px")
 
   onMount(() => {
@@ -58,6 +61,8 @@ export default function () {
     } catch {
       console.log("Setting parse error")
     }
+    document.querySelector("#logo")?.classList.add("logo")
+    document.querySelector("#logo")?.classList.remove("logo-before")
   })
 
   createEffect(() => {
@@ -80,9 +85,16 @@ export default function () {
   })
 
   createEffect(() => {
-    messageList().length
+    messageList()
     currentAssistantMessage()
     scrollToBottom()
+  })
+
+  createEffect(() => {
+    if (inputContent() === "") {
+      setHeight("48px")
+      setCompatiblePrompt([])
+    }
   })
 
   const scrollToBottom = throttle(
@@ -108,7 +120,8 @@ export default function () {
       setCurrentAssistantMessage("")
       setLoading(false)
       setController()
-      inputRef.focus()
+      !isMobile() && inputRef.focus()
+      scrollToBottom.flush()
     }
   }
 
@@ -120,8 +133,6 @@ export default function () {
     // @ts-ignore
     if (window?.umami) umami.trackEvent("chat_generate")
     setInputContent("")
-    setCompatiblePrompt([])
-    setHeight("48px")
     if (
       !value ||
       value !==
@@ -197,11 +208,10 @@ export default function () {
     }
   }
 
-  function clear() {
-    setInputContent("")
+  function clearSession() {
+    // setInputContent("")
     setMessageList([])
     setCurrentAssistantMessage("")
-    setCompatiblePrompt([])
   }
 
   function stopStreamFetch() {
@@ -221,21 +231,35 @@ export default function () {
 
   function selectPrompt(prompt: string) {
     setInputContent(prompt)
-    // setHeight("48px")
-    setHeight(inputRef.scrollHeight + "px")
     setCompatiblePrompt([])
+    const { scrollHeight } = inputRef
+    setHeight(
+      `${
+        scrollHeight > window.innerHeight - 64
+          ? window.innerHeight - 64
+          : scrollHeight
+      }px`
+    )
+    inputRef.focus()
   }
 
   return (
     <div mt-6 ref={containerRef!}>
-      <For each={messageList()}>
-        {message => (
-          <MessageItem role={message.role} message={message.content} />
+      <div
+        id="message-container"
+        style={{
+          "background-color": "var(--c-bg)"
+        }}
+      >
+        <For each={messageList()}>
+          {message => (
+            <MessageItem role={message.role} message={message.content} />
+          )}
+        </For>
+        {currentAssistantMessage() && (
+          <MessageItem role="assistant" message={currentAssistantMessage} />
         )}
-      </For>
-      {currentAssistantMessage() && (
-        <MessageItem role="assistant" message={currentAssistantMessage} />
-      )}
+      </div>
       <div
         class="pb-2em fixed bottom-0 z-100 op-0"
         style={
@@ -245,16 +269,17 @@ export default function () {
                 transition: "opacity 0.3s ease-in-out",
                 width: containerWidth(),
                 opacity: 100,
-                "background-color": "var(--bg)"
+                "background-color": "var(--c-bg)"
               }
         }
       >
         <Show when={!compatiblePrompt().length && height() === "48px"}>
-          <Setting
+          <SettingAction
             setting={setting}
             setSetting={setSetting}
-            clear={clear}
+            clear={clearSession}
             reAnswer={reAnswer}
+            messaages={messageList()}
           />
         </Show>
         <Show
@@ -316,34 +341,33 @@ export default function () {
                 )
                 let { value } = e.currentTarget
                 setInputContent(value)
-                if (value === "") return setCompatiblePrompt([])
                 if (value === "/" || value === " ")
-                  return setCompatiblePrompt(prompts)
+                  return setCompatiblePrompt(props.prompts)
                 const promptKey = value.replace(/^[\/ ](.*)/, "$1")
                 if (promptKey !== value)
                   setCompatiblePrompt(fzf.find(promptKey).map(k => k.item))
               }}
               style={{
                 height: height(),
+                "border-bottom-right-radius": 0,
                 "border-top-right-radius": height() === "48px" ? 0 : "0.25rem",
                 "border-top-left-radius":
                   compatiblePrompt().length === 0 ? "0.25rem" : 0
               }}
-              class="self-end py-3 resize-none w-full px-3 text-slate bg-slate bg-op-15 focus:bg-op-20 focus:ring-0 focus:outline-none placeholder:text-slate-400 placeholder:op-30"
+              class="self-end py-3 resize-none w-full px-3 text-slate-7 dark:text-slate bg-slate bg-op-15 focus:bg-op-20 focus:ring-0 focus:outline-none placeholder:text-slate-400 placeholder:text-slate-400 placeholder:op-40"
               rounded-l
             />
             <Show when={inputContent()}>
               <button
-                class="i-carbon:add-filled absolute right-3.5em bottom-3em rotate-45 hover:text-op-100 text-slate text-op-15"
+                class="i-carbon:add-filled absolute right-3.5em bottom-3em rotate-45 text-op-20! hover:text-op-80! text-slate-7 dark:text-slate"
                 onClick={() => {
                   setInputContent("")
-                  setHeight("48px")
-                  setCompatiblePrompt([])
+                  inputRef.focus()
                 }}
               />
             </Show>
             <div
-              class="flex text-slate bg-slate bg-op-15 h-3em items-center rounded-r"
+              class="flex text-slate-7 dark:text-slate bg-slate bg-op-15 text-op-80! hover:text-op-100! h-3em items-center rounded-r"
               style={{
                 "border-top-right-radius":
                   compatiblePrompt().length === 0 ? "0.25rem" : 0
@@ -352,7 +376,7 @@ export default function () {
               <button
                 title="发送"
                 onClick={() => handleButtonClick()}
-                class="i-carbon:send-filled text-5 mx-3 hover:text-slate-2"
+                class="i-carbon:send-filled text-5 mx-3"
               />
             </div>
           </div>
