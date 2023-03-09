@@ -26,5 +26,5 @@ jobs:
       - name: Merge Upstream into Fork
         run: |
           git fetch
-          git merge --strategy=ort -X patience ${{ env.UPSTREAM_BRANCH }} -m "合并上游变更"
+          git merge --strategy=ort -X patience upstream/${{ env.UPSTREAM_BRANCH }} -m "合并上游变更"
           git push
