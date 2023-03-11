@@ -39,6 +39,8 @@ export default function (props: { prompts: PromptItem[] }) {
   const [height, setHeight] = createSignal("48px")
 
   onMount(() => {
+    document.querySelector("main")?.classList.remove("before")
+    document.querySelector("main")?.classList.add("after")
     createResizeObserver(containerRef, ({ width, height }, el) => {
       if (el === containerRef) setContainerWidth(`${width}px`)
     })
@@ -61,8 +63,6 @@ export default function (props: { prompts: PromptItem[] }) {
     } catch {
       console.log("Setting parse error")
     }
-    document.querySelector("#logo")?.classList.add("logo")
-    document.querySelector("#logo")?.classList.remove("logo-before")
   })
 
   createEffect(() => {
@@ -266,7 +266,7 @@ export default function (props: { prompts: PromptItem[] }) {
           containerWidth() === "init"
             ? {}
             : {
-                transition: "opacity 0.3s ease-in-out",
+                transition: "opacity 1s ease-in-out",
                 width: containerWidth(),
                 opacity: 100,
                 "background-color": "var(--c-bg)"
