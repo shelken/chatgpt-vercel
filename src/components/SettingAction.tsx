@@ -1,8 +1,8 @@
 import { Accessor, createSignal, JSXElement, Setter, Show } from "solid-js"
-import type { Setting } from "./Generator"
 import { toJpeg } from "html-to-image"
 import { copyToClipboard, dateFormat } from "~/utils"
 import type { ChatMessage } from "~/types"
+import type { Setting } from "~/system"
 
 export default function SettingAction(props: {
   setting: Accessor<Setting>
@@ -16,6 +16,19 @@ export default function SettingAction(props: {
   return (
     <div class="text-sm text-slate-7 dark:text-slate mb-2">
       <Show when={shown()}>
+        <SettingItem icon="i-ri:lock-password-line" label="网站密码">
+          <input
+            type="password"
+            value={props.setting().password}
+            class="max-w-150px ml-1em px-1 text-slate-7 dark:text-slate rounded-sm bg-slate bg-op-15 focus:bg-op-20 focus:ring-0 focus:outline-none"
+            onInput={e => {
+              props.setSetting({
+                ...props.setting(),
+                password: (e.target as HTMLInputElement).value
+              })
+            }}
+          />
+        </SettingItem>
         <SettingItem icon="i-carbon:api" label="OpenAI API Key">
           <input
             type="password"
@@ -121,7 +134,9 @@ export default function SettingAction(props: {
               setTimeout(() => setCopied(false), 1000)
             }}
             icon={
-              copied() ? "i-ri:check-fill text-yellow" : "i-ri:markdown-line"
+              copied()
+                ? "i-ri:check-fill dark:text-yellow text-yellow-6"
+                : "i-ri:markdown-line"
             }
           />
           <ActionItem
