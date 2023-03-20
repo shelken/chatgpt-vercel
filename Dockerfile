@@ -8,5 +8,5 @@ COPY . .
 #RUN pnpm run build
 ENV HOST=0.0.0.0 PORT=3000
 EXPOSE $PORT
-CMD pnpm dev
+CMD pnpm dev --host
 #CMD ["node", "dist/server/entry.mjs"]
