@@ -1,5 +1,4 @@
 # ChatGPT-Vercel
-
 ![](assets/preview-light.png#gh-light-mode-only)
 ![](assets/preview-dark.png#gh-dark-mode-only)
 
@@ -22,10 +21,10 @@ API Key 由我自己免费提供，请不要滥用，不提供长期服务，请
 
   - 开启连续对话：OpenAI 并没有提供 ChatGPT 那样的上下文功能，只能每次都把全部对话传过去，并且都要算 token，而且仍然有最大 4096 token 的限制。
 
-- token 是怎么算的：OpenAI 有它自己的计算方法，大多数时候是 1个单词 1 token，一个汉字 2 token。所以说汉字很费钱，这还不是两倍的关系，毕竟英语是按单词算的，而不是字母。
+- token 是怎么算的：OpenAI 有它自己的算法，大多数时候是一个单词 1 token，一个汉字 2 token。
 - Open AI Key 要怎么获得：注册 OpenAI 的帐号，然后 [生成 Key](https://platform.openai.com/account/api-keys) 就行了。现在注册就送 5 美元，可以用一两个月。闲注册麻烦，可以直接去买号，自行搜索。注意不要被骗，一般 5 元以下可以入手，看到有 120 美元的 key，这种属于是绑了虚拟信用卡，可以透支 120 美元，只能用一个月，而且容易封号。
 - 输入框右边的四个按钮：
-  - 对话生成图片，下载。
+  - 对话生成图片，电脑上复制，手机上下载。
   - 对话生成 Markdown，复制到剪贴板。
   - 重新回答最近的一个问题。其实也可以用键盘的<kbd>↑</kbd>键，可以自动将最近的一次提问填到输入框里。
   - 清空对话。
@@ -39,16 +38,19 @@ API Key 由我自己免费提供，请不要滥用，不提供长期服务，请
 
 
 ## 部署一个你自己的 ChatGPT 网站（免费）
+[![](assets/powered-by-vercel.svg)](http://vercel.com/?utm_source=busiyi&utm_campaign=oss)
 
 如果你只需要部署一个你自己用的网站，而不需要定制，那么你完全不需要在本地跑起来，你可以直接点击下面的按钮，然后按照提示操作，然后在 Vercel 中填入环境变量即可。vercel.app 域名已经被墙，但 vercel 本身没有被墙，所以你绑定自己的域名就可以了。如果广泛分享，域名有被墙的风险。
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/ourongxing/chatgpt-vercel&env=OPENAI_API_KEY)
+[![Deploy with Vercel](https://vercel.com/button?utm_source=busiyi&utm_campaign=oss)](https://vercel.com/new/clone?repository-url=https://github.com/ourongxing/chatgpt-vercel&env=OPENAI_API_KEY?utm_source=busiyi&utm_campaign=oss)
+
+不过上面这种方式不容易更新，最好还是先 fork 本仓库，然后在 [Vercel](https://vercel.com/new?utm_source=busiyi&utm_campaign=oss) 中导入你自己的仓库，之后要更新就在 Github 里点击 `Sync fork` 就可以同步更新了。
 
 如果你需要部署给更多人用，需要修改一些代码，那么你可能需要将上面创建的你自己的仓库 `git clone` 到本地。改完了 `git commit & push` 即可重新部署，vscode 上点几下就可以了。也可以用 vercel 的 cli，`vercel deploy --prod`。
 
 如果你需要在本地开发和调试，有点麻烦：
 
-1. 升级到 `node18`，要用到原生的 `fetch`。
+1. 升级到 `node18`，要用到原生的 `fetch` 和 `readableStream`。
 2. API 被墙了，自己想办法开代理，不然要报错。可以设置 OpenAI 的代理 API，也可以直接 `vercel deploy` 部署到 vercel 开发环境上调试。
 3. `pnpm i` 安装依赖。
 4. `pnpm dev` 启动项目。
@@ -60,14 +62,14 @@ API Key 由我自己免费提供，请不要滥用，不提供长期服务，请
 - [Netlify](https://www.netlify.com/)
 - [Railway](https://railway.app/)
 
-直接导入即可，但是不建议使用除 Vercel 以外的部署方案。 除了比较慢以外，更重要的是只有 Vercel 支持设置 Edge Function 服务器的地区，其他平台会自动使用距离最近的服务器，有可能是 OpenAI 不支持的地区，导致封号。
+直接导入即可，但是不建议使用除 Vercel 以外的部署方案。 除了比较慢以外，更重要的是只有 Vercel 支持设置 Edge Function 服务器的地区，其他平台会自动使用距离最近的服务器，有可能是 OpenAI 不支持的地区，从而导致封号。
 
 #### 环境变量
 
 | 环境变量                           | 说明                                                         | 默认值                                                       |
 | ---------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------------ |
 | `OPENAI_API_KEY`                   | OpenAI API Key，可以填写多个，用 \| 或者 换行 隔开，随机调用。最好是多填几个，API 有并发上的限制。如果用户不填自己的 key，那么就会使用你的 key。 | 无                                                           |
-| `DEFAULT_MESSAGE`                  | 默认提示信息                                                 | - 由 [OpenAI API (gpt-3.5-turbo)](https://platform.openai.com/docs/guides/chat) 和 [Vercel](http://vercel.com/) 提供支持。<br/>- 由 [@ourongxing](https://github.com/ourongxing) 基于 [chatgpt-demo](https://github.com/ddiu8081/chatgpt-demo) 开发，查看 [源码](https://github.com/ourongxing/chatgpt-vercel)，欢迎自部署。<br/>- 如果本项目对你有所帮助，可以给小猫 [买点零食](https://cdn.jsdelivr.net/gh/ourongxing/chatgpt-vercel/assets/reward.gif)，但不接受任何付费功能请求。<br/>- 该预览页面域名由 [@AUDI_GUZZ](https://m.okjike.com/users/4af3cfb4-1291-4a8b-b210-f515c86934a9) 和 [@Airyland](https://m.okjike.com/users/C6C8DE3A-E89D-4978-9E7D-B2E167D835A9) 免费提供，API Key 由 [@AUDI_GUZZ](https://m.okjike.com/users/4af3cfb4-1291-4a8b-b210-f515c86934a9) 和 [@ourongxing](https://github.com/ourongxing) 免费提供，感谢。<br/>- [[Shift]] + [[Enter]] 换行。开头输入 [[/]] 或者 [[空格]] 搜索 Prompt 预设。点击输入框滚动到底部。 |
+| `DEFAULT_MESSAGE`                  | 默认提示信息                                                 | - xx xx                                                      |
 | `DEFAULT_SETTING`                  | 默认设置                                                     | {<br/> "continuousDialogue": true,<br/> "archiveSession": false,<br/> "openaiAPIKey": "",<br /> "openaiAPITemperature": 60,<br/> "systemRule": ""<br/> "password": ""<br />} |
 | `RESET_CONTINUOUS_DIALOGUE_OPTION` | 刷新时重置 `开启连续对话` 选项，在分享给很多人用的时候可以有效避免大量消耗。 | false                                                        |
 | `OPENAI_API_BASE_URL`              | 本地开发时可以填写 OpenAI 的代理服务器，但是 Vercel 不需要。 | api.openai.com                                               |
@@ -118,5 +120,4 @@ API Key 由我自己免费提供，请不要滥用，不提供长期服务，请
 ![](./assets/reward.gif)
 
 ## License
-
 [MIT](./LICENSE)
