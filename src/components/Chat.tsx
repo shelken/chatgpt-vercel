@@ -1,7 +1,7 @@
 import { createEffect, createSignal, For, onMount, Show } from "solid-js"
 import { createResizeObserver } from "@solid-primitives/resize-observer"
 import MessageItem from "./MessageItem"
-import type { ChatMessage } from "~/types"
+import type { ChatMessage, PromptItem } from "~/types"
 import SettingAction from "./SettingAction"
 import PromptList from "./PromptList"
 import { Fzf } from "fzf"
@@ -9,11 +9,6 @@ import throttle from "just-throttle"
 import { isMobile } from "~/utils"
 import type { Setting } from "~/system"
 import { makeEventListener } from "@solid-primitives/event-listener"
-
-export interface PromptItem {
-  desc: string
-  prompt: string
-}
 
 export default function (props: {
   prompts: PromptItem[]
@@ -40,8 +35,13 @@ export default function (props: {
   const [setting, setSetting] = createSignal(_setting)
   const [compatiblePrompt, setCompatiblePrompt] = createSignal<PromptItem[]>([])
   const [containerWidth, setContainerWidth] = createSignal("init")
+  const defaultMessage: ChatMessage = {
+    role: "assistant",
+    content: _message,
+    special: "default"
+  }
   const fzf = new Fzf(props.prompts, {
-    selector: k => `${k.desc} (${k.prompt})`
+    selector: k => `${k.desc}||${k.prompt}`
   })
   const [height, setHeight] = createSignal("48px")
   const [compositionend, setCompositionend] = createSignal(true)
@@ -98,23 +98,11 @@ export default function (props: {
         sendMessage(props.question)
       } else {
         if (session && archiveSession) {
-          const parsed = JSON.parse(session)
-          if (parsed.length > 1) {
-            setMessageList(parsed)
-          } else
-            setMessageList([
-              {
-                role: "assistant",
-                content: _message
-              }
-            ])
-        } else
-          setMessageList([
-            {
-              role: "assistant",
-              content: _message
-            }
-          ])
+          const parsed = JSON.parse(session) as ChatMessage[]
+          if (parsed.length === 1 && parsed[0].special === "default") {
+            setMessageList([defaultMessage])
+          } else setMessageList(parsed)
+        } else setMessageList([defaultMessage])
       }
     } catch {
       console.log("Setting parse error")
@@ -136,19 +124,13 @@ export default function (props: {
     messageList()
     if (prev) {
       if (messageList().length === 0) {
-        setMessageList([
-          {
-            role: "assistant",
-            content: _message
-          }
-        ])
+        setMessageList([defaultMessage])
       } else if (
         messageList().length > 1 &&
-        messageList()[0].content === _message
+        messageList()[0].special === "default"
       ) {
         setMessageList(messageList().slice(1))
-      }
-      if (setting().archiveSession) {
+      } else if (setting().archiveSession) {
         localStorage.setItem("session", JSON.stringify(messageList()))
       }
     }
@@ -187,7 +169,8 @@ export default function (props: {
         ...messageList(),
         {
           role: "assistant",
-          content: currentAssistantMessage().trim()
+          content: currentAssistantMessage().trim(),
+          id: Date.now()
         }
       ])
       setCurrentAssistantMessage("")
@@ -216,7 +199,8 @@ export default function (props: {
         ...messageList(),
         {
           role: "user",
-          content: inputValue
+          content: inputValue,
+          id: Date.now()
         }
       ])
     }
@@ -230,7 +214,8 @@ export default function (props: {
           ...messageList(),
           {
             role: "error",
-            content: error.message.replace(/(sk-\w{5})\w+/g, "$1")
+            content: error.message.replace(/(sk-\w{5})\w+/g, "$1"),
+            id: Date.now()
           }
         ])
     }
@@ -242,25 +227,19 @@ export default function (props: {
     const controller = new AbortController()
     setController(controller)
     const systemRule = setting().systemRule.trim()
-    const message = [
-      {
-        role: "user",
-        content: inputValue
-      }
-    ]
-    if (systemRule)
-      message.push({
-        role: "system",
-        content: systemRule
-      })
+    const message = {
+      role: "user",
+      content: inputValue
+    }
+    if (systemRule) message.content += "。\n\n" + systemRule
     const response = await fetch("/api", {
       method: "POST",
       body: JSON.stringify({
         messages: setting().continuousDialogue
-          ? [...messageList().slice(0, -1), ...message].filter(
+          ? [...messageList().slice(0, -1), message].filter(
               k => k.role !== "error"
             )
-          : message,
+          : [...messageList().filter(k => k.special === "locked"), message],
         key: setting().openaiAPIKey || undefined,
         temperature: setting().openaiAPITemperature / 100,
         password: setting().password,
@@ -296,7 +275,7 @@ export default function (props: {
   }
 
   function clearSession() {
-    setMessageList([])
+    setMessageList(messages => messages.filter(k => k.special === "locked"))
     setCurrentAssistantMessage("")
   }
 
@@ -326,14 +305,14 @@ export default function (props: {
   const findPrompts = throttle(
     (value: string) => {
       if (value === "/" || value === " ")
-        return setCompatiblePrompt(props.prompts.slice(0, 20))
+        return setCompatiblePrompt(props.prompts)
       const query = value.replace(/^[\/ ](.*)/, "$1")
       if (query !== value)
         setCompatiblePrompt(
-          fzf
-            .find(query)
-            .map(k => k.item)
-            .slice(0, 20)
+          fzf.find(query).map(k => ({
+            ...k.item,
+            positions: k.positions
+          }))
         )
     },
     250,
@@ -373,13 +352,9 @@ export default function (props: {
           <For each={messageList()}>
             {(message, index) => (
               <MessageItem
-                role={message.role}
-                message={message.content}
-                index={
-                  loading() || message.content === _message
-                    ? undefined
-                    : index()
-                }
+                message={message}
+                hiddenAction={loading() || message.special === "default"}
+                index={index()}
                 setInputContent={setInputContent}
                 sendMessage={sendMessage}
                 setMessageList={setMessageList}
@@ -387,7 +362,14 @@ export default function (props: {
             )}
           </For>
           {currentAssistantMessage() && (
-            <MessageItem role="assistant" message={currentAssistantMessage()} />
+            <MessageItem
+              hiddenAction={true}
+              message={{
+                role: "assistant",
+                content: currentAssistantMessage(),
+                special: "temporary"
+              }}
+            />
           )}
         </div>
       </div>
